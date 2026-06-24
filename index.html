@@ -568,9 +568,16 @@ function setView(v){
 
 function toggleSim(){
   state.simOpen = !state.simOpen;
-  document.getElementById('sim-panel').style.display = state.simOpen ? '' : 'none';
-  document.getElementById('btn-sim').classList.toggle('active', state.simOpen);
-  if(state.simOpen) renderSimPanel();
+  var panel = document.getElementById('sim-panel');
+  var btn = document.getElementById('btn-sim');
+  if(state.simOpen){
+    renderSimPanel();
+    panel.style.display = '';
+    btn.classList.add('active');
+  } else {
+    panel.style.display = 'none';
+    btn.classList.remove('active');
+  }
 }
 
 function onMonthSlide(v){
