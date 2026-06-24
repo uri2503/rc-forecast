@@ -46,7 +46,7 @@
   .chart-wrap{position:relative;width:100%}
 
   /* PRICE SIMULATOR */
-  #sim-panel{display:none;background:#13132a;border-radius:14px;padding:18px;border:1px solid rgba(245,158,11,.2);margin-bottom:18px}
+  #sim-panel{background:#13132a;border-radius:14px;padding:18px;border:1px solid rgba(245,158,11,.2);margin-bottom:18px}
   .sim-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
   .sim-title{font-size:13px;font-weight:700;color:#f59e0b}
   .sim-sub{font-size:11px;color:#475569;margin-top:2px}
@@ -524,7 +524,10 @@ function renderDetail(){
 }
 
 function renderSimPanel(){
-  var html = '';
+  var grid = document.getElementById('sim-grid');
+  // DOM komplett leeren und neu aufbauen
+  while(grid.firstChild){ grid.removeChild(grid.firstChild); }
+
   TOOLS.forEach(function(t){
     var def = defPrice(t);
     var eff = effPrice(t);
@@ -533,19 +536,49 @@ function renderSimPanel(){
     var maxP = t.isLicense ? 299 : (t.isOneTime ? 199 : 29);
     var step = t.isLicense ? 5 : (t.isOneTime ? 1 : 0.5);
     var m12 = Math.round(calcRev(t, 11, state.scenario));
-    html += '<div class="sim-card'+(changed?' changed':'')+'" style="'+(changed?'border-color:'+t.color+'66':'')+'">' +
-      '<div class="sim-card-header">' +
-        '<div style="display:flex;gap:6px;align-items:center"><span style="font-size:15px">'+t.emoji+'</span><span class="sim-name">'+t.name+'</span></div>' +
-        '<div style="display:flex;gap:6px;align-items:center"><span class="sim-type">'+(t.isLicense?'Lizenz/Mo':t.isOneTime?'Einmalpreis':'Pro Stück')+'</span>'+(changed?'<span class="sim-changed-badge" style="background:'+t.color+'33;color:'+t.color+'">geändert</span>':'')+'</div>' +
-      '</div>' +
-      '<div class="sim-row">' +
-        '<input type="range" min="'+minP+'" max="'+maxP+'" step="'+step+'" value="'+eff+'" data-toolid="'+t.id+'" class="price-slider" style="accent-color:'+t.color+';flex:1">' +
-        '<div class="sim-price" style="color:'+t.color+'">€'+(eff%1===0?eff:parseFloat(eff).toFixed(2))+'</div>' +
-      '</div>' +
-      '<div class="sim-footer"><span>Standard: €'+def+'</span><span>M12: <strong style="color:'+(changed?'#f59e0b':'#475569')+'">€'+fmt(m12)+'</strong></span></div>' +
-    '</div>';
+
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#0a0a18;border-radius:10px;padding:12px 14px;border:1px solid '+(changed?t.color+'66':'#1e1e40');
+
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+    header.innerHTML = '<div style="display:flex;gap:6px;align-items:center"><span style="font-size:15px">'+t.emoji+'</span><span style="font-size:12px;font-weight:600;color:#cbd5e1">'+t.name+'</span></div>' +
+      '<span style="font-size:10px;color:#475569">'+(t.isLicense?'Lizenz/Mo':t.isOneTime?'Einmalpreis':'Pro Stück')+'</span>';
+    card.appendChild(header);
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px';
+
+    var slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = minP;
+    slider.max = maxP;
+    slider.step = step;
+    slider.value = eff;
+    slider.style.cssText = 'flex:1;accent-color:'+t.color;
+    var priceDiv = document.createElement('div');
+    priceDiv.style.cssText = 'min-width:52px;text-align:right;font-size:16px;font-weight:800;color:'+t.color;
+    priceDiv.textContent = '€'+(eff%1===0?eff:parseFloat(eff).toFixed(2));
+
+    slider.addEventListener('input', (function(toolId, pd){
+      return function(){
+        state.priceOverrides[toolId] = parseFloat(this.value);
+        pd.textContent = '€'+(parseFloat(this.value)%1===0?this.value:parseFloat(this.value).toFixed(2));
+        renderKPIs(buildPortfolioData());
+      };
+    })(t.id, priceDiv));
+
+    row.appendChild(slider);
+    row.appendChild(priceDiv);
+    card.appendChild(row);
+
+    var footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:#374151';
+    footer.innerHTML = '<span>Standard: €'+def+'</span><span>M12: <strong style="color:#475569">€'+fmt(m12)+'</strong></span>';
+    card.appendChild(footer);
+
+    grid.appendChild(card);
   });
-  document.getElementById('sim-grid').innerHTML = html;
 }
 
 // ── ACTIONS ────────────────────────────────────────────────────────────────────
