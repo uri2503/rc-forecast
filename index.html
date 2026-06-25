@@ -158,7 +158,10 @@
     <button class="btn-nav active" id="nav-portfolio" onclick="setView('portfolio')">📊 Portfolio</button>
     <button class="btn-nav" id="nav-modell" onclick="setView('modell')">🔵 Abo vs. Einmal</button>
     <button class="btn-nav" id="nav-detail" onclick="setView('detail')">🔍 Tool-Detail</button>
-    <button class="btn-sim" id="btn-sim" onclick="toggleSim()" style="margin-left:auto">⚙️ Preis-Simulator</button>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <button class="btn-sim" id="btn-sim" onclick="toggleSim()">⚙️ Preise</button>
+      <button class="btn-sim" id="btn-qty" onclick="toggleQty()">📦 Mengen</button>
+    </div>
   </div>
 
   <!-- PRICE SIMULATOR -->
@@ -168,6 +171,15 @@
       <button class="btn-reset" onclick="resetPrices()">↺ Zurücksetzen</button>
     </div>
     <div class="sim-grid" id="sim-grid"></div>
+  </div>
+
+  <!-- MENGEN SIMULATOR -->
+  <div id="qty-panel" style="display:none">
+    <div class="sim-header">
+      <div><div class="sim-title" style="color:#10b981">📦 Mengen-Simulator</div><div class="sim-sub">Kunden/Lizenzen in M12 anpassen → sofortige Auswirkung auf alle Charts</div></div>
+      <button class="btn-reset" onclick="resetQty()">↺ Zurücksetzen</button>
+    </div>
+    <div class="sim-grid" id="qty-grid"></div>
   </div>
 
   <!-- VIEWS -->
@@ -236,16 +248,27 @@ var TOOLS = [
 var MONTHS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 var STATUS = { live:{label:'Live',color:'#10b981',bg:'#0d2e22'}, pilot:{label:'Pilot',color:'#f59e0b',bg:'#2d2007'}, 'pre-launch':{label:'Pre-Launch',color:'#a78bfa',bg:'#1e1840'} };
 
-var state = { scenario:'base', view:'portfolio', activeMonth:11, priceOverrides:{}, selectedTool:null, simOpen:false };
+var state = { scenario:'base', view:'portfolio', activeMonth:11, priceOverrides:{}, qtyOverrides:{}, selectedTool:null, simOpen:false, qtyOpen:false };
 
 var chartStack = null, chartDonut = null, chartSplit = null, chartDetail = null;
 
 function defPrice(t){ return t.isLicense ? t.licenseMonthly : (t.price || 0); }
 function effPrice(t){ return state.priceOverrides[t.id] !== undefined ? state.priceOverrides[t.id] : defPrice(t); }
 
-function calcRev(t, mi, sc){
+// M12-Zielwert aus Override oder Original-Ramp
+function defQty(t, sc){ var ramp = sc === 'base' ? t.rampBase : t.rampTarget; return ramp[11]; }
+function effQty(t, sc){ return state.qtyOverrides[t.id] !== undefined ? state.qtyOverrides[t.id] : defQty(t, sc); }
+
+// Skaliert die gesamte Ramp proportional zum neuen M12-Ziel
+function scaledUnits(t, mi, sc){
   var ramp = sc === 'base' ? t.rampBase : t.rampTarget;
-  var units = ramp[mi] || 0;
+  var origM12 = ramp[11] || 1;
+  var newM12 = effQty(t, sc);
+  return Math.round((ramp[mi] / origM12) * newM12);
+}
+
+function calcRev(t, mi, sc){
+  var units = scaledUnits(t, mi, sc);
   if(t.isLicense) return units * effPrice(t);
   if(t.isOneTime) return units * effPrice(t) + Math.floor(units * 0.15) * (t.addonPrice || 0);
   return units * effPrice(t);
@@ -280,6 +303,7 @@ function renderAll(){
   if(state.view === 'modell') renderModell(data);
   if(state.view === 'detail') renderDetail();
   if(state.simOpen) renderSimPanel();
+  if(state.qtyOpen) renderQtyPanel();
 }
 
 function renderKPIs(data){
@@ -611,6 +635,93 @@ function toggleSim(){
     panel.style.display = 'none';
     btn.classList.remove('active');
   }
+}
+
+function toggleQty(){
+  state.qtyOpen = !state.qtyOpen;
+  var panel = document.getElementById('qty-panel');
+  var btn = document.getElementById('btn-qty');
+  if(state.qtyOpen){
+    renderQtyPanel();
+    panel.style.display = '';
+    btn.classList.add('active');
+    btn.style.borderColor = '#10b981';
+    btn.style.background = '#0d2e22';
+    btn.style.color = '#10b981';
+  } else {
+    panel.style.display = 'none';
+    btn.classList.remove('active');
+    btn.style.borderColor = '#1e1e40';
+    btn.style.background = 'transparent';
+    btn.style.color = '#475569';
+  }
+}
+
+function resetQty(){
+  state.qtyOverrides = {};
+  renderAll();
+  if(state.qtyOpen) renderQtyPanel();
+}
+
+function renderQtyPanel(){
+  var grid = document.getElementById('qty-grid');
+  while(grid.firstChild){ grid.removeChild(grid.firstChild); }
+
+  TOOLS.forEach(function(t){
+    var def = defQty(t, state.scenario);
+    var eff = effQty(t, state.scenario);
+    var changed = state.qtyOverrides[t.id] !== undefined;
+    var maxQ = Math.round(def * 3); // max = 3× Standard
+    var minQ = 0;
+    var unit = t.isLicense ? 'Lizenzen' : (t.isOneTime ? 'Käufer' : 'Käufer');
+    var m12rev = Math.round(calcRev(t, 11, state.scenario));
+
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#0a0a18;border-radius:10px;padding:12px 14px;border:1px solid '+(changed?t.color+'66':'#1e1e40');
+
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+    header.innerHTML = '<div style="display:flex;gap:6px;align-items:center"><span style="font-size:15px">'+t.emoji+'</span><span style="font-size:12px;font-weight:600;color:#cbd5e1">'+t.name+'</span></div>' +
+      '<span style="font-size:10px;color:#475569">'+unit+' in M12</span>';
+    card.appendChild(header);
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px';
+
+    var slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = minQ;
+    slider.max = maxQ;
+    slider.step = 1;
+    slider.value = eff;
+    slider.style.cssText = 'flex:1;accent-color:'+t.color;
+
+    var qtyDiv = document.createElement('div');
+    qtyDiv.style.cssText = 'min-width:52px;text-align:right;font-size:16px;font-weight:800;color:'+t.color;
+    qtyDiv.textContent = eff;
+
+    var footerDiv = document.createElement('div');
+    footerDiv.style.cssText = 'display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:#374151';
+    footerDiv.innerHTML = '<span>Standard: '+def+' '+unit+'</span><span>M12 Umsatz: <strong style="color:#475569">€'+fmt(m12rev)+'</strong></span>';
+
+    slider.addEventListener('input', (function(toolId, qd, fd, tool){
+      return function(){
+        var val = parseInt(this.value);
+        state.qtyOverrides[toolId] = val;
+        qd.textContent = val;
+        var newRev = Math.round(calcRev(tool, 11, state.scenario));
+        fd.innerHTML = '<span>Standard: '+defQty(tool, state.scenario)+' '+unit+'</span><span>M12 Umsatz: <strong style="color:#10b981">€'+fmt(newRev)+'</strong></span>';
+        renderKPIs(buildPortfolioData());
+      };
+    })(t.id, qtyDiv, footerDiv, t));
+
+    row.appendChild(slider);
+    row.appendChild(qtyDiv);
+    card.appendChild(header);
+    card.appendChild(row);
+    card.appendChild(footerDiv);
+    grid.appendChild(card);
+  });
 }
 
 function onMonthSlide(v){
